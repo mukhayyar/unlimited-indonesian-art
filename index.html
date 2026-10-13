@@ -4,31 +4,27 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
 <title>Unlimited Indonesian Art — Seni Nusantara Tak Terbatas</title>
-<meta name="description" content="A procedurally generated, infinitely scrolling artwork of Indonesian heritage — gunung, candi, kapal pinisi, gunungan wayang and mega-mendung batik clouds. Inspired by shan-shui-inf."/>
+<meta name="description" content="Infinite, procedurally generated line-art galleries of Indonesian heritage — Wayang, Batik, Candi, Bahari (pinisi) and Gunung. Inspired by shan-shui-inf."/>
 <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
-  <div id="stage"></div>
+  <div id="stage"><noscript>Enable JavaScript to view the galleries.</noscript></div>
 
   <header id="titlecard">
     <h1>Seni Nusantara <span>Tak Terbatas</span></h1>
-    <p>Unlimited Indonesian Art — an endless procedurally-drawn scroll of Indonesia's heritage. Drag to sail along the coast.</p>
+    <p>Infinite line-art galleries of Indonesian heritage. Pick a gallery, then drag to wander.</p>
   </header>
+
+  <nav id="galleries" aria-label="Galleries"></nav>
 
   <div id="controls">
     <label>Seed <input id="seedInput" type="text" autocomplete="off" spellcheck="false"/></label>
-    <button id="newSeed" title="Generate a new world">🎲 Seed baru</button>
-    <button id="palette" title="Switch palette"></button>
-    <button id="auto" title="Auto-scroll">▶ Jalan</button>
-    <button id="download" title="Download this view as SVG">⬇ Unduh SVG</button>
-    <span class="hint">seed: <b id="seedLabel"></b> · drag / ← → to pan</span>
+    <button id="newSeed">🎲 Seed</button>
+    <button id="palette"></button>
+    <button id="auto">▶ Jalan</button>
+    <button id="download">⬇ SVG</button>
+    <span class="hint">seed: <b id="seedLabel"></b> · drag / ← →</span>
   </div>
-
-  <footer id="legend">
-    <span>Batik</span><span>Wayang&nbsp;Kulit</span><span>Keris</span><span>Angklung</span>
-    <span>Tari&nbsp;Saman</span><span>Noken</span><span>Tari&nbsp;Bali</span><span>Gamelan</span>
-    <span>Pencak&nbsp;Silat</span><span>Pantun</span><span>Kapal&nbsp;Pinisi</span>
-  </footer>
 
   <script type="module" src="js/app.js"></script>
 </body>

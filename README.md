@@ -76,3 +76,19 @@ invisible.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Galleries (v2 — line art)
+
+The site is now **five infinite line-art galleries**, each its own seeded generator,
+switchable in the top-right (deep-link with `?g=<id>`):
+
+- **Gunung** — volcanic landscape: brush volcanoes, scroll-clouds, palms.
+- **Candi** — temple hills: Borobudur & Prambanan in contour line art.
+- **Bahari** — the sea: *kapal pinisi* (seven sails) over Hokusai-ish ink waves.
+- **Wayang** — the unique one: a *kelir* (lamp-lit screen) with *gunungan* and
+  stylised wayang figures in gold line, on its own *Malam* palette.
+- **Batik** — an endless cloth of *kawung*, *ceplok* and *parang* motifs.
+
+Engine: `js/brush.js` (tapered brush strokes, Catmull-Rom curves, hatching, curls),
+`js/common.js` (shared motifs), `js/galleries.js` (the five generators), `js/app.js`
+(gallery switcher, infinite pan, SVG export). Two palettes: *Klasik (sogan)* and *Malam (kelir)*.

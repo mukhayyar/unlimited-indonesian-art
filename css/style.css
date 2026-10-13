@@ -38,3 +38,13 @@ html, body { margin: 0; height: 100%; background: #0c0712; overflow: hidden;
   #controls { bottom: 58px; gap: 6px; padding: 7px 10px; }
   #legend { display: none; }
 }
+
+/* gallery nav */
+#galleries { position: fixed; top: 18px; right: 18px; display: flex; gap: 6px; flex-wrap: wrap;
+  justify-content: flex-end; max-width: 60vw; z-index: 5; }
+#galleries button { cursor: pointer; font: inherit; font-size: 13px; color: var(--paper);
+  background: rgba(20,13,16,.5); border: 1px solid rgba(242,195,94,.4); border-radius: 999px;
+  padding: 6px 13px; backdrop-filter: blur(6px); transition: background .15s; }
+#galleries button:hover { background: rgba(242,195,94,.25); }
+#galleries button.on { background: var(--gold); color: var(--ink); font-weight: 700; }
+@media (max-width: 640px){ #galleries{ top: auto; right: 8px; bottom: 104px; max-width: 94vw; } }

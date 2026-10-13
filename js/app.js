@@ -1,159 +1,112 @@
-// Viewport, controls, infinite panning and SVG export.
+// App shell: gallery switcher, infinite pan, palette, SVG export.
+// Rendering rule (fixes "blank page"): we only ever set innerHTML on the HTML
+// container (#stage), so the HTML parser namespaces the <svg> subtree correctly.
+// Panning within a mounted chunk-set mutates the groups' transform via
+// setAttribute (safe on existing SVG nodes); crossing a chunk boundary repaints.
 import { hashSeed } from './prng.js';
-import { PALETTES, batikFrame } from './brush.js';
-import { World, VW, VH, LY, CHUNK } from './world.js';
+import { PALETTES } from './brush.js';
+import { VW, VH, CHUNK } from './common.js';
+import { GALLERIES } from './galleries.js';
 
-const SVGNS = 'http://www.w3.org/2000/svg';
 const $ = (id) => document.getElementById(id);
+const stage = $('stage');
 
 const state = {
-  seedStr: 'nusantara',
-  seed: 0,
-  paletteKey: 'senja',
-  viewX: 0,
-  auto: false,
-  mountedKey: '',
-  world: null,
+  gi: 0, paletteKey: GALLERIES[0].defaultPalette, seedStr: 'nusantara',
+  viewX: 0, auto: false, inst: null, chunkKey: '',
 };
+const gallery = () => GALLERIES[state.gi];
+const pal = () => PALETTES[state.paletteKey];
 
-const svg = document.createElementNS(SVGNS, 'svg');
-svg.setAttribute('viewBox', `0 0 ${VW} ${VH}`);
-svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-svg.setAttribute('id', 'art');
-$('stage').appendChild(svg);
-
-function defsFor(pal) {
+function defs() {
+  const p = pal();
   return `<defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${pal.skyTop}"/>
-      <stop offset="55%" stop-color="${pal.skyMid}"/>
-      <stop offset="100%" stop-color="${pal.skyHorizon}"/>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${p.paper1}"/><stop offset="100%" stop-color="${p.paper2}"/>
     </linearGradient>
-    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${pal.skyHorizon}" stop-opacity="0.5"/>
-      <stop offset="18%" stop-color="${pal.sea}"/>
-      <stop offset="100%" stop-color="${pal.ink}"/>
-    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="${p.glow}" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="${p.glow}" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="${p.glow}" stop-opacity="0"/>
+    </radialGradient>
   </defs>`;
 }
-
-function visibleChunks() {
-  const c0 = Math.floor(state.viewX / CHUNK) - 1;
-  const c1 = Math.floor((state.viewX + VW) / CHUNK) + 1;
-  const list = [];
-  for (let c = c0; c <= c1; c++) list.push(c);
-  return list;
-}
-
-function buildStatic(pal) {
-  svg.innerHTML =
-    defsFor(pal) +
-    `<rect x="0" y="0" width="${VW}" height="${VH}" fill="url(#sky)"/>` +
-    `<g id="back"></g>` +
-    `<rect x="0" y="${LY}" width="${VW}" height="${VH - LY}" fill="url(#sea)"/>` +
-    `<g id="front"></g>` +
-    `<g id="frame">${batikFrame(pal)}</g>`;
-}
-
-function mountChunks() {
-  const pal = PALETTES[state.paletteKey];
-  const chunks = visibleChunks();
-  const key = state.paletteKey + ':' + chunks[0] + ':' + chunks[chunks.length - 1];
-  if (key === state.mountedKey) return;
-  state.mountedKey = key;
-  let back = '', front = '';
-  for (const c of chunks) {
-    const { back: b, front: fr } = state.world.chunk(c, pal);
-    back += b; front += fr;
-  }
-  $('back').innerHTML = back;
-  $('front').innerHTML = front;
-}
-
 function frame() {
-  mountChunks();
+  const p = pal();
+  return `<rect x="6" y="6" width="${VW - 12}" height="${VH - 12}" fill="none" stroke="${p.gold}" stroke-width="2" opacity="0.5"/>`
+    + `<rect x="11" y="11" width="${VW - 22}" height="${VH - 22}" fill="none" stroke="${p.gold}" stroke-width="0.8" opacity="0.4"/>`;
+}
+function visibleChunks() {
+  const a = Math.floor(state.viewX / CHUNK) - 1, b = Math.floor((state.viewX + VW) / CHUNK) + 1;
+  const out = []; for (let c = a; c <= b; c++) out.push(c); return out;
+}
+function worldSVG(extraAttr = '') {
+  const chunks = visibleChunks(); let back = '', front = '';
+  for (const c of chunks) { const k = state.inst.chunk(c, pal()); back += k.back; front += (k.front || ''); }
   const tx = -state.viewX;
-  $('back').setAttribute('transform', `translate(${tx},0)`);
-  $('front').setAttribute('transform', `translate(${tx},0)`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VW} ${VH}" `
+    + `preserveAspectRatio="xMidYMid slice"${extraAttr}>`
+    + defs() + state.inst.background(pal())
+    + `<g id="back" transform="translate(${tx},0)">${back}</g>`
+    + `<g id="front" transform="translate(${tx},0)">${front}</g>`
+    + `<g>${frame()}</g></svg>`;
 }
 
-function regenerate(full = true) {
-  state.seed = hashSeed(state.seedStr);
-  state.world = new World(state.seed);
-  state.mountedKey = '';
-  if (full) buildStatic(PALETTES[state.paletteKey]);
-  frame();
+function paint() {
+  stage.innerHTML = worldSVG();
+  state.chunkKey = state.gi + state.paletteKey + visibleChunks()[0];
+}
+function pan() {
+  if (state.gi + state.paletteKey + visibleChunks()[0] !== state.chunkKey) { paint(); return; }
+  const tx = `translate(${-state.viewX},0)`;
+  const b = $('back'), f = $('front');
+  if (b) b.setAttribute('transform', tx);
+  if (f) f.setAttribute('transform', tx);
+}
+function regen() {
+  state.inst = gallery().create(hashSeed(state.seedStr + ':' + gallery().id));
+  paint();
   $('seedLabel').textContent = state.seedStr;
+  document.querySelectorAll('#galleries button').forEach((bb, i) => bb.classList.toggle('on', i === state.gi));
+  $('palette').textContent = pal().name;
 }
-
-// --- export the current view as a standalone .svg -------------------------
 function exportSVG() {
-  const pal = PALETTES[state.paletteKey];
-  const chunks = visibleChunks();
-  let back = '', front = '';
-  for (const c of chunks) { const k = state.world.chunk(c, pal); back += k.back; front += k.front; }
-  const tx = -state.viewX;
-  const doc =
-    `<svg xmlns="${SVGNS}" viewBox="0 0 ${VW} ${VH}" width="${VW}" height="${VH}">` +
-    defsFor(pal) +
-    `<rect x="0" y="0" width="${VW}" height="${VH}" fill="url(#sky)"/>` +
-    `<g transform="translate(${tx},0)">${back}</g>` +
-    `<rect x="0" y="${LY}" width="${VW}" height="${VH - LY}" fill="url(#sea)"/>` +
-    `<g transform="translate(${tx},0)">${front}</g>` +
-    batikFrame(pal) +
-    `</svg>`;
-  const blob = new Blob([doc], { type: 'image/svg+xml' });
+  const doc = worldSVG(` width="${VW}" height="${VH}"`);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `indonesian-art-${state.seedStr}-${Math.round(state.viewX)}.svg`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  a.href = URL.createObjectURL(new Blob([doc], { type: 'image/svg+xml' }));
+  a.download = `${gallery().id}-${state.seedStr}-${Math.round(state.viewX)}.svg`;
+  a.click(); URL.revokeObjectURL(a.href);
 }
 
-// --- interaction ----------------------------------------------------------
-let dragging = false, lastX = 0;
-const scale = () => VW / svg.getBoundingClientRect().width;
-svg.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; svg.setPointerCapture(e.pointerId); });
-svg.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  state.viewX -= (e.clientX - lastX) * scale();
-  lastX = e.clientX; frame();
-});
-svg.addEventListener('pointerup', (e) => { dragging = false; try { svg.releasePointerCapture(e.pointerId); } catch {} });
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight') { state.viewX += 120; frame(); }
-  if (e.key === 'ArrowLeft') { state.viewX -= 120; frame(); }
-});
+// interaction (bound to the persistent container, not the re-created svg)
+let drag = false, lastX = 0;
+const sc = () => VW / (stage.getBoundingClientRect().width || VW);
+stage.addEventListener('pointerdown', (e) => { drag = true; lastX = e.clientX; stage.setPointerCapture(e.pointerId); });
+stage.addEventListener('pointermove', (e) => { if (drag) { state.viewX -= (e.clientX - lastX) * sc(); lastX = e.clientX; pan(); } });
+stage.addEventListener('pointerup', (e) => { drag = false; try { stage.releasePointerCapture(e.pointerId); } catch {} });
+addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') { state.viewX += 140; pan(); } if (e.key === 'ArrowLeft') { state.viewX -= 140; pan(); } });
+function loop() { if (state.auto && !drag) { state.viewX += 1.1; pan(); } requestAnimationFrame(loop); }
 
-function loop() {
-  if (state.auto && !dragging) { state.viewX += 1.1; frame(); }
-  requestAnimationFrame(loop);
-}
-
-// --- controls -------------------------------------------------------------
-$('newSeed').addEventListener('click', () => {
-  state.seedStr = Math.random().toString(36).slice(2, 9);
-  $('seedInput').value = state.seedStr;
-  state.viewX = 0; regenerate();
+// gallery nav
+GALLERIES.forEach((g, i) => {
+  const b = document.createElement('button');
+  b.textContent = g.name;
+  b.addEventListener('click', () => { state.gi = i; state.paletteKey = g.defaultPalette; state.viewX = 0; regen(); });
+  $('galleries').appendChild(b);
 });
-$('seedInput').addEventListener('change', (e) => {
-  state.seedStr = e.target.value.trim() || 'nusantara';
-  state.viewX = 0; regenerate();
-});
-$('palette').addEventListener('click', () => {
-  state.paletteKey = state.paletteKey === 'senja' ? 'siang' : 'senja';
-  $('palette').textContent = PALETTES[state.paletteKey].name;
-  regenerate();
-});
-$('auto').addEventListener('click', () => {
-  state.auto = !state.auto;
-  $('auto').textContent = state.auto ? '⏸ Berhenti' : '▶ Jalan';
-  $('auto').classList.toggle('on', state.auto);
-});
+$('newSeed').addEventListener('click', () => { state.seedStr = Math.random().toString(36).slice(2, 9); $('seedInput').value = state.seedStr; state.viewX = 0; regen(); });
+$('seedInput').addEventListener('change', (e) => { state.seedStr = e.target.value.trim() || 'nusantara'; state.viewX = 0; regen(); });
+$('palette').addEventListener('click', () => { state.paletteKey = state.paletteKey === 'klasik' ? 'malam' : 'klasik'; regen(); });
+$('auto').addEventListener('click', () => { state.auto = !state.auto; $('auto').textContent = state.auto ? '⏸ Berhenti' : '▶ Jalan'; $('auto').classList.toggle('on', state.auto); });
 $('download').addEventListener('click', exportSVG);
 
-// boot
-$('seedInput').value = state.seedStr;
-$('palette').textContent = PALETTES[state.paletteKey].name;
-regenerate();
-loop();
+// boot — never leave a blank screen
+try {
+  const gq = new URLSearchParams(location.search).get('g');
+  if (gq) { const idx = GALLERIES.findIndex(g => g.id === gq); if (idx >= 0) { state.gi = idx; state.paletteKey = GALLERIES[idx].defaultPalette; } }
+  $('seedInput').value = state.seedStr;
+  regen(); loop();
+} catch (err) {
+  console.error(err);
+  stage.innerHTML = `<pre style="color:#f2e2b8;padding:24px;white-space:pre-wrap;font:13px monospace">UniiArt error:\n${(err && err.stack) || err}</pre>`;
+}

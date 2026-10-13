@@ -1,86 +1,123 @@
-// SVG building helpers and the colour palettes.
-// We assemble the scene as SVG strings — same spirit as shan-shui-inf — so any
-// frame can be downloaded as a crisp, editable .svg.
+// Line-art brush engine: tapered strokes, curvy closed forms, hatching.
+// Everything is built from a few organic primitives so the whole site reads as
+// ink-on-paper line art with soft, curvy finishing (in the spirit of shan-shui-inf).
 
 export const SVGNS = 'http://www.w3.org/2000/svg';
+const f = (n) => Math.round(n * 100) / 100;
 
-// Palettes evoke Indonesian art: "senja" = wayang-kelir dusk (indigo night to
-// warm gold horizon, sogan-brown silhouettes); "siang" = bright batik day.
+// Warm batik-paper palettes. Line art = ink lines + translucent washes.
 export const PALETTES = {
-  senja: {
-    name: 'Senja (wayang dusk)',
-    skyTop: '#1b1033', skyMid: '#5b2a4e', skyHorizon: '#e8a13a', sun: '#ffd77a',
-    far: '#3a2a4d', mid: '#5a3a2e', near: '#2a1a18', ink: '#140d10',
-    sea: '#243b57', seaHi: '#3c6f94', foam: '#dcc9a6', gold: '#f2c35e',
-    paper: '#f3e6c8', accent: '#b5462f',
+  klasik: {
+    name: 'Klasik (sogan)',
+    paper1: '#f6ecd2', paper2: '#ead9b0', ink: '#2c2016', inkSoft: '#5b4328',
+    wash: '#c98a3f', wash2: '#8a5a2a', gold: '#b9832e', accent: '#9c3b24',
+    glow: '#e8b858',
   },
-  siang: {
-    name: 'Siang (batik day)',
-    skyTop: '#9fd0e6', skyMid: '#cfe9f2', skyHorizon: '#f6efd6', sun: '#fff3c4',
-    far: '#7d93a6', mid: '#6f7f57', near: '#3f5235', ink: '#2a2118',
-    sea: '#3f87a6', seaHi: '#79b7cf', foam: '#f2efe2', gold: '#caa23a',
-    paper: '#faf4e4', accent: '#9c3b24',
+  malam: {
+    name: 'Malam (kelir)',
+    paper1: '#140e1f', paper2: '#241433', ink: '#f2e2b8', inkSoft: '#caa96a',
+    wash: '#e6a93a', wash2: '#b5462f', gold: '#f2c35e', accent: '#e8884a',
+    glow: '#f4cf7a',
   },
 };
 
-// --- primitive string builders -------------------------------------------
-const f = (n) => (Math.round(n * 100) / 100); // trim float noise in output
-
-export function path(d, { fill = 'none', stroke = 'none', sw = 1, opacity = 1, lj = 'round' } = {}) {
+// --- low-level emitters ---------------------------------------------------
+export function raw(d, { fill = 'none', stroke = 'none', sw = 1, opacity = 1 } = {}) {
   return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="${f(sw)}" `
-    + `opacity="${f(opacity)}" stroke-linejoin="${lj}" stroke-linecap="round"/>`;
+    + `opacity="${f(opacity)}" stroke-linejoin="round" stroke-linecap="round"/>`;
 }
-
-export function poly(points, opts) {
-  if (!points.length) return '';
-  let d = `M ${f(points[0][0])} ${f(points[0][1])}`;
-  for (let i = 1; i < points.length; i++) d += ` L ${f(points[i][0])} ${f(points[i][1])}`;
-  return path(d, opts);
-}
-
-export function polygon(points, opts) {
-  return poly([...points, points[0]], opts);
-}
-
-export function circle(cx, cy, r, { fill = 'none', stroke = 'none', sw = 1, opacity = 1 } = {}) {
-  return `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="${fill}" stroke="${stroke}" `
-    + `stroke-width="${f(sw)}" opacity="${f(opacity)}"/>`;
-}
-
-export function ellipse(cx, cy, rx, ry, opts = {}) {
-  const { fill = 'none', stroke = 'none', sw = 1, opacity = 1 } = opts;
-  return `<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(rx)}" ry="${f(ry)}" fill="${fill}" `
-    + `stroke="${stroke}" stroke-width="${f(sw)}" opacity="${f(opacity)}"/>`;
-}
-
 export function group(inner, { transform = '', opacity = 1 } = {}) {
   return `<g${transform ? ` transform="${transform}"` : ''}${opacity !== 1 ? ` opacity="${f(opacity)}"` : ''}>${inner}</g>`;
 }
-
-// A smooth closed blob through points via quadratic midpoints — good for clouds,
-// hills and the organic silhouettes of mountains.
-export function smoothClosed(points, opts) {
-  if (points.length < 3) return polygon(points, opts);
-  const n = points.length;
-  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  let d = `M ${f(mid(points[n - 1], points[0])[0])} ${f(mid(points[n - 1], points[0])[1])}`;
-  for (let i = 0; i < n; i++) {
-    const cur = points[i], nxt = points[(i + 1) % n];
-    const m = mid(cur, nxt);
-    d += ` Q ${f(cur[0])} ${f(cur[1])} ${f(m[0])} ${f(m[1])}`;
-  }
-  return path(d + ' Z', opts);
+export function circle(cx, cy, r, o = {}) {
+  const { fill = 'none', stroke = 'none', sw = 1, opacity = 1 } = o;
+  return `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="${fill}" stroke="${stroke}" stroke-width="${f(sw)}" opacity="${f(opacity)}"/>`;
 }
 
-// Smooth open curve through points (ridge lines, fronds, waves).
-export function smoothOpen(points, opts) {
-  if (points.length < 3) return poly(points, opts);
+// Smooth OPEN path through points (Catmull-Rom → bezier) — the curvy finishing.
+export function curve(points, { stroke = '#000', sw = 1.4, opacity = 1, fill = 'none' } = {}) {
+  if (points.length < 2) return '';
+  if (points.length === 2) return raw(`M ${f(points[0][0])} ${f(points[0][1])} L ${f(points[1][0])} ${f(points[1][1])}`, { stroke, sw, opacity, fill });
   let d = `M ${f(points[0][0])} ${f(points[0][1])}`;
-  for (let i = 1; i < points.length - 1; i++) {
-    const m = [(points[i][0] + points[i + 1][0]) / 2, (points[i][1] + points[i + 1][1]) / 2];
-    d += ` Q ${f(points[i][0])} ${f(points[i][1])} ${f(m[0])} ${f(m[1])}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i], p1 = points[i], p2 = points[i + 1], p3 = points[i + 2] || p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C ${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(p2[0])} ${f(p2[1])}`;
   }
-  const last = points[points.length - 1];
-  d += ` L ${f(last[0])} ${f(last[1])}`;
-  return path(d, opts);
+  return raw(d, { stroke, sw, opacity, fill });
+}
+
+// Smooth CLOSED path (Catmull-Rom loop) — curvy blobs: hills, clouds, bodies.
+function closedD(points) {
+  const n = points.length;
+  const P = (i) => points[((i % n) + n) % n];
+  let d = `M ${f(P(0)[0])} ${f(P(0)[1])}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C ${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(p2[0])} ${f(p2[1])}`;
+  }
+  return d + ' Z';
+}
+export function blob(points, { fill = 'none', stroke = '#000', sw = 1.4, opacity = 1 } = {}) {
+  const d = closedD(points);
+  let out = '';
+  if (fill !== 'none') out += raw(d, { fill, opacity: opacity * (stroke === 'none' ? 1 : 0.9) });
+  if (stroke !== 'none') out += raw(d, { stroke, sw, opacity });
+  return out;
+}
+
+// Tapered brush stroke: a filled ribbon around a centre-line, width tapering to
+// zero at both ends (a real calligraphic mark). `w` = max width, or a function
+// t∈[0,1]→width, or an array per point.
+export function brush(points, w = 6, { fill = '#000', opacity = 1 } = {}) {
+  const n = points.length;
+  if (n < 2) return '';
+  const widthAt = (i) => {
+    const t = i / (n - 1);
+    if (typeof w === 'function') return w(t);
+    if (Array.isArray(w)) return w[i];
+    return w * Math.sin(Math.PI * (0.08 + 0.84 * t)); // taper both ends
+  };
+  const left = [], right = [];
+  for (let i = 0; i < n; i++) {
+    const a = points[Math.max(0, i - 1)], b = points[Math.min(n - 1, i + 1)];
+    let dx = b[0] - a[0], dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len, hw = widthAt(i) / 2;
+    left.push([points[i][0] + nx * hw, points[i][1] + ny * hw]);
+    right.push([points[i][0] - nx * hw, points[i][1] - ny * hw]);
+  }
+  const loop = [...left, ...right.reverse()];
+  return raw(closedD(loop), { fill, opacity });
+}
+
+// A single confident contour line with a hint of taper (for outlines).
+export function ink(points, pal, sw = 1.6, opacity = 1) {
+  return curve(points, { stroke: pal.ink, sw, opacity });
+}
+
+// Parallel hatching inside a direction, for soft shading.
+export function hatch(x, y, w, h, angleDeg, gap, pal, opacity = 0.18) {
+  const a = (angleDeg * Math.PI) / 180, dx = Math.cos(a), dy = Math.sin(a);
+  let out = '';
+  const steps = Math.ceil((w + h) / gap);
+  for (let i = -steps; i < steps; i++) {
+    const ox = x + i * gap * -dy, oy = y + i * gap * dx;
+    out += raw(`M ${f(ox)} ${f(oy)} L ${f(ox + dx * w)} ${f(oy + dy * w)}`, { stroke: pal.inkSoft, sw: 0.7, opacity });
+  }
+  return out;
+}
+
+// A decorative double-spiral curl (lung-style) — the signature of Nusantara
+// ornament, used as leaf tips, cloud scrolls, puppet filigree.
+export function curl(x, y, r, dir, pal, sw = 1.5) {
+  const pts = [], turns = 1.6;
+  for (let t = 0; t <= 1; t += 0.08) {
+    const ang = dir * t * turns * Math.PI * 2, rr = r * (1 - t * 0.78);
+    pts.push([x + Math.cos(ang) * rr, y + Math.sin(ang) * rr - r]);
+  }
+  return curve(pts, { stroke: pal.ink, sw, opacity: 0.9 });
 }
